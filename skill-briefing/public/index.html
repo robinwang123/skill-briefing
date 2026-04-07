@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Skill 每日简报生成器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; padding: 24px; }
+  .container { max-width: 860px; margin: 0 auto; }
+  .header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  .logo { width: 48px; height: 48px; border-radius: 12px; background: linear-gradient(135deg, #6366f1, #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  .header h1 { font-size: 22px; font-weight: 700; color: #f8fafc; }
+  .header p { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+  .card { background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h3 { font-size: 13px; color: #6366f1; font-weight: 600; margin-bottom: 14px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .opt-btn { padding: 9px 14px; border-radius: 8px; font-size: 13px; border: 1px solid #374151; background: #0f1117; color: #94a3b8; cursor: pointer; text-align: left; transition: all 0.2s; }
+  .opt-btn:hover { border-color: #6366f1; color: #c7d2fe; }
+  .opt-btn.selected { border-color: #6366f1; background: #1e1b4b; color: #c7d2fe; }
+  .topic-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .topic-input { flex: 1; background: #0f1117; border: 1px solid #374151; border-radius: 8px; padding: 9px 12px; color: #e2e8f0; font-size: 13px; outline: none; }
+  .topic-input:focus { border-color: #6366f1; }
+  .topic-input::placeholder { color: #4b5563; }
+  .gen-btn { width: 100%; padding: 11px; border-radius: 8px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border: none; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .gen-btn:hover { opacity: 0.9; }
+  .gen-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .loading { display: none; }
+  .step-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; color: #94a3b8; transition: color 0.3s; }
+  .step-item.done { color: #4ade80; }
+  .step-item.active { color: #e2e8f0; }
+  .step-icon { width: 18px; text-align: center; }
+  .output { display: none; background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px; overflow: hidden; }
+  .output.visible { display: block; }
+  .output-header { background: #161b22; padding: 10px 16px; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #8b949e; }
+  .output-content { padding: 20px; font-size: 13px; line-height: 1.9; white-space: pre-wrap; color: #cbd5e1; }
+  .error-box { background: #2d1515; border: 1px solid #7f1d1d; border-radius: 8px; padding: 14px; color: #fca5a5; font-size: 13px; margin-top: 12px; display: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 6px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">🧠</div>
+    <div>
+      <h1>Skill 每日简报生成器</h1>
+      <p>由 Claude AI 实时生成 · Skill 领域动态</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>⚙️ 配置参数</h3>
+    <div class="options-grid">
+      <button class="opt-btn selected" onclick="selectDepth(this,'标准')">📊 标准深度</button>
+      <button class="opt-btn" onclick="selectDepth(this,'深度')">🔭 深度模式（更详细）</button>
+      <button class="opt-btn" onclick="selectDepth(this,'精简')">⚡ 精简模式（只要点）</button>
+    </div>
+    <div class="topic-row">
+      <input class="topic-input" id="topicInput" placeholder="指定子领域（可选）：如「MCP协议」「提示工程」" />
+    </div>
+    <button class="gen-btn" id="genBtn" onclick="generate()">✨ 生成今日简报</button>
+    <div class="error-box" id="errorBox"></div>
+  </div>
+
+  <div class="card loading" id="loadingCard">
+    <h3>🔄 正在生成...</h3>
+    <div id="steps"></div>
+  </div>
+
+  <div class="output" id="output">
+    <div class="output-header">
+      <div><span class="dot"></span>简报已生成</div>
+      <div style="font-size:11px">由 Claude claude-sonnet-4-20250514 实时生成</div>
+    </div>
+    <div class="output-content" id="outputContent"></div>
+  </div>
+</div>
+
+<script>
+let selectedDepth = '标准';
+
+function selectDepth(el, val) {
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedDepth = val;
+}
+
+const steps_data = [
+  '连接 Claude API...',
+  '分析 Skill 领域最新动态...',
+  '整理提示工程、AI智能体信息...',
+  '按简报模板撰写内容...',
+  '完成生成...'
+];
+
+async function generate() {
+  const btn = document.getElementById('genBtn');
+  const loadingCard = document.getElementById('loadingCard');
+  const stepsDiv = document.getElementById('steps');
+  const output = document.getElementById('output');
+  const errorBox = document.getElementById('errorBox');
+  const topic = document.getElementById('topicInput').value.trim();
+
+  btn.disabled = true;
+  btn.textContent = '生成中...';
+  loadingCard.style.display = 'block';
+  output.classList.remove('visible');
+  errorBox.style.display = 'none';
+  stepsDiv.innerHTML = '';
+
+  // Show animated steps
+  for (let i = 0; i < steps_data.length; i++) {
+    await new Promise(r => setTimeout(r, i === 0 ? 100 : 600));
+    const div = document.createElement('div');
+    div.className = 'step-item active';
+    div.innerHTML = `<span class="step-icon">⏳</span> ${steps_data[i]}`;
+    stepsDiv.appendChild(div);
+    if (i > 0) {
+      stepsDiv.children[i-1].className = 'step-item done';
+      stepsDiv.children[i-1].querySelector('.step-icon').textContent = '✅';
+    }
+  }
+
+  try {
+    const res = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ depth: selectedDepth, topic })
+    });
+
+    const data = await res.json();
+
+    stepsDiv.lastChild.className = 'step-item done';
+    stepsDiv.lastChild.querySelector('.step-icon').textContent = '✅';
+    loadingCard.style.display = 'none';
+
+    if (!res.ok || data.error) {
+      errorBox.textContent = '生成失败：' + (data.error || '未知错误');
+      errorBox.style.display = 'block';
+    } else {
+      document.getElementById('outputContent').textContent = data.result;
+      output.classList.add('visible');
+    }
+
+  } catch (err) {
+    loadingCard.style.display = 'none';
+    errorBox.textContent = '网络错误，请稍后重试：' + err.message;
+    errorBox.style.display = 'block';
+  }
+
+  btn.disabled = false;
+  btn.textContent = '✨ 重新生成';
+}
+</script>
+</body>
+</html>
